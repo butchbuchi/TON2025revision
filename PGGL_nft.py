@@ -364,6 +364,23 @@ class Node:
                     temp_map_list.append(self.find_frequent([node_pre.map[i],node_next.map[i]]))
         self.node_transition(temp_map_list)
 
+    def bias_PG(self, node_pre):
+        temp_map_list=[]
+        if node_pre==None:
+            for i in range(self.num_qubit):
+                if self.check_gate(i):
+                    temp_map_list.append(self.map[self.layer[i]])
+                else:
+                    temp_map_list.append(self.map[i])
+        else:
+            for i in range(self.num_qubit):
+                if self.check_gate(i):
+                    temp_map_list.append(self.map[self.layer[i]])
+                else:
+                    temp_map_list.append(node_pre.map[i])
+        self.node_transition(temp_map_list)
+
+
     # def GL(self):
     #     for i in range(self.num_qubit):
     #         if self.check_gate(i) and not self.check_local(i):
@@ -503,6 +520,12 @@ def total_PG(nodes):
         else:
             nodes[i].PG(nodes[i-1],nodes[i+1])
 
+def total_partial_PG(nodes):
+    for i in range(len(nodes)):
+        if i==0: nodes[i].bias_PG(None)
+        else:
+            nodes[i].bias_PG(nodes[i-1])
+
 def total_GL(nodes):
     for i in range(len(nodes)):
         if i==0: nodes[i].GL(None,nodes[i+1])
@@ -608,19 +631,25 @@ def optimize_under(file_path,num_qpu,limit_qpu,epochs,anastz=None,anastz_mode=No
             
     # for epoch in (range(epochs+1 ,epochs+101)): 
     #     total_PG(nodes)
+
     cycle=50
-    
+    # cycle=cycle*(num_qubit//limit_qpu[0]+1)
     for epoch in range(100):
         total_PG(nodes)
-    for epoch in range (100,epochs-100):
-        if epoch%cycle==0:
-            total_GL(nodes)
+    for epoch in range (100,epochs-cycle):
+        if epoch%(2*cycle)==0:
+            for _ in range(1):
+                total_GL(nodes)
+        elif epoch%cycle==0:
+            for _ in range(10):
+                total_partial_PG(nodes)
+
         else:
             total_PG(nodes)
-    for epoch in range(epochs-100,epochs):
+    for epoch in range(epochs-cycle,epochs):
         total_PG(nodes)
         
-        print("{}/{} epochs optimized".format(epoch,epochs))
+        # print("{}/{} epochs optimized".format(epoch,epochs))
     cost=total_cost(nodes)
     remote_cost_list=total_remote_gates(nodes)
     max_QPU=0
@@ -655,7 +684,7 @@ def experiment_qft_constant_limit(run_id,num_qpu,limit_qpu,seed,SA=False,repeat_
             ]).to_csv(output_file, index=False)
 
         for num_qubit in range(30, 101, 10):
-            file_path = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/random_circuits/{num_qubit}qubits_{num_qubit}layers.txt"
+            file_path = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/qft_circuits/qft_circuit({num_qubit}qubits).txt"
 
             ave_cost = 0
             ave_max_QPU = 0
