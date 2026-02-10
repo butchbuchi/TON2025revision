@@ -1,0 +1,12 @@
+Dear Editor Zhang,
+
+We are pleased to submit a paper titled "Labubu: Layer-buffered Bundled Optimization for Efficient Remote Gate Scheduling in Distributed Quantum Computing" to IEEE TON for consideration of publication.
+
+A preliminary version of this work has been presented at the IEEE International Conference on Distributed Computing Systems (ICDCS) on 20-23 July 2025.
+However, this journal submission has a significant amount of additional new content compared to the conference version. 
+While the conference version has 10 pages (excluding references), the journal version has around 14 pages. Please see the summary of differences for details. 
+
+We believe this work is well aligned with the scope of TON and will be of interest to its readership. 
+Thank you very much for your time and consideration.
+
+Best regards, Xu Xu, Yu Liu, Yingling Mao, and Yuanyuan Yang

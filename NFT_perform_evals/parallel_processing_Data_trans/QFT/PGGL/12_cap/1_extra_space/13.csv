@@ -1,0 +1,2 @@
+circuit_size,y_local_reg,telegate_cost,teledata_cost,num_qpu,time
+20,43.0,3.0,40.0,2.0,5.02172589302063
