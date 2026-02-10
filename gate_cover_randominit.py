@@ -1,31 +1,15 @@
 # gate_cover.py
-# Python 3.8+
-#
-# Integrated:
-#  1) Your directed layers encoding for CNOT: layers[t][ctrl]=tgt (<10000), layers[t][tgt]=ctrl+10000
-#  2) gate_cover scheduler (NO pre-covering future gates; future gates only affect objective via ncov_est)
-#  3) METIS multilevel k-way partitioning for an initial mapping (if pymetis available)
-#
-# IMPORTANT USER REQUIREMENT:
-#   Number of available QPUs:
-#       P = math.floor(Q / L) + 1     (NOT ceil)
-#   This gives one extra QPU even when Q is divisible by L, and also gives at least 1.
-#
+# Python 3.8+ (no future imports)
 # Assumptions (per user):
-# - delay = 1, dbar_t = 1 (ignored)
-# - fully-connected network
-# - TeleGate: 1 EPR per remote gate (per-gate, no multi-gate TeleGate reuse to avoid double-counting)
-# - TeleData: 1 EPR per teleported qubit
-#
-# Output:
-# - prints scheduled operations
-# - prints total EPR consumed
+# - layers[t][ctrl]=tgt (<10000) and layers[t][tgt]=ctrl+10000
+# - delay=1, dbar_t=1 (ignored)
+# - fully-connected network: 1 EPR per TeleGate remote gate, 1 EPR per TeleData teleported qubit
+# - IMPORTANT: Future gates are ONLY used to estimate ncov in the objective; we DO NOT "cover/skip" future gates.
 
 import math
 from dataclasses import dataclass
-import sys
+import os
 from typing import Dict, List, Tuple, Optional, Set, Any
-from metis_like import metis_like_part_graph
 
 import numpy as np
 
@@ -41,9 +25,6 @@ def analyze_qasm(qasm_filelocation: str) -> Tuple[np.ndarray, int]:
           layers[t][b] = a + 10000
 
     Single-qubit gates only advance the local timebin of the acted qubit.
-
-    NOTE:
-      This expects first line contains '... [Q] ...'. Example: 'qreg q[30];'
     """
     with open(qasm_filelocation, "r") as f:
         lines = f.readlines()
@@ -51,6 +32,7 @@ def analyze_qasm(qasm_filelocation: str) -> Tuple[np.ndarray, int]:
     if not lines:
         raise ValueError("Empty input file.")
 
+    # Expect first line contains number of qubits, e.g., 'qreg q[30];'
     num_qubits = int(lines[0].split("[")[1].split("]")[0])
     flag_list = [-1] * num_qubits
     gates: List[List[int]] = [[-1] * num_qubits]
@@ -65,7 +47,7 @@ def analyze_qasm(qasm_filelocation: str) -> Tuple[np.ndarray, int]:
         if line.startswith("cx"):
             a, b = tuple(int(q.split("[")[1].split("]")[0]) for q in line.split()[1].split(","))
 
-            # your original alignment policy
+            # keep your original alignment policy
             if flag_list[a] >= flag_list[b]:
                 flag_list[a] += 1
                 flag_list[b] = flag_list[a]
@@ -96,6 +78,7 @@ class Circuit:
         self.layers, self.num_qubits = analyze_qasm(filelocation)
 
     def count_2q_gates(self) -> int:
+        """Count CNOTs by counting control entries (<10000)."""
         count = 0
         for t in range(self.layers.shape[0]):
             row = self.layers[t]
@@ -104,122 +87,6 @@ class Circuit:
                 if 0 <= a < 10000:
                     count += 1
         return count
-
-
-# ----------------------------- METIS initial mapping -----------------------------
-
-def qpu_count(Q: int, L: int) -> int:
-    """User requirement: P = floor(Q/L) + 1 (and at least 1)."""
-    if L <= 0:
-        raise ValueError("L must be > 0.")
-    return max(1,   math.ceil(Q/L))  # math.ceil(Q/L) gives the correct count of QPUs needed to fit Q qubits with capacity L, ensuring at least 1 QPU.
-
-
-def build_comm_graph(layers: np.ndarray) -> Tuple[List[List[int]], List[List[int]]]:
-    """
-    Build the communication graph G(V,E,w) from directed CNOT encoding.
-      - V: qubits
-      - edge (u,v): if any CNOT between u and v
-      - weight w(u,v): number of CNOTs between u and v
-
-    Returns:
-      adjacency: List[List[int]]
-      eweights:  List[List[int]] aligned with adjacency
-    """
-    if layers.size == 0:
-        return [], []
-    T, Q = layers.shape
-
-    edge_w: Dict[Tuple[int, int], int] = {}
-
-    for t in range(T):
-        row = layers[t]
-        for ctrl in range(Q):
-            tgt = int(row[ctrl])
-            if 0 <= tgt < 10000:
-                u, v = ctrl, tgt
-                if u > v:
-                    u, v = v, u
-                edge_w[(u, v)] = edge_w.get((u, v), 0) + 1
-
-    adjacency = [[] for _ in range(Q)]
-    eweights = [[] for _ in range(Q)]
-    for (u, v), w in edge_w.items():
-        adjacency[u].append(v)
-        eweights[u].append(w)
-        adjacency[v].append(u)
-        eweights[v].append(w)
-
-    return adjacency, eweights
-
-
-def metis_initial_mapping(layers: np.ndarray, L: int) -> Dict[int, int]:
-    """
-    Produce an initial qubit->QPU mapping using METIS multilevel k-way partitioning
-    if pymetis is available. Otherwise falls back to a simple greedy packing.
-
-    Uses P = floor(Q/L)+1 QPUs.
-
-    Capacity repair:
-      If any partition exceeds L, move extra qubits into any non-full QPU (lowest-fill first).
-    """
-    if layers.size == 0:
-        return {}
-
-    Q = layers.shape[1]
-    P = qpu_count(Q, L)
-
-    # Build graph
-    adjacency, eweights = build_comm_graph(layers)
-
-    # Default fallback: sequential packing into P QPUs with cap L (will leave slack due to +1 QPU)
-    def fallback_mapping() -> Dict[int, int]:
-        m: Dict[int, int] = {}
-        counts = [0] * P
-        cur = 0
-        for q in range(Q):
-            # find next qpu with space
-            while cur < P and counts[cur] >= L:
-                cur += 1
-            if cur >= P:
-                # should not happen with P=floor(Q/L)+1, but guard anyway:
-                cur = P - 1
-            m[q] = cur
-            counts[cur] += 1
-        return m
-
-    parts = metis_like_part_graph(adjacency=adjacency, eweights=eweights, nparts=P, seed=0)
-    parts = list(parts)
-
-    # Repair capacity if needed
-    qpu_qubits: List[List[int]] = [[] for _ in range(P)]
-    for q, p in enumerate(parts):
-        p = int(p)
-        if p < 0 or p >= P:
-            p = p % P
-        qpu_qubits[p].append(q)
-
-    # Precompute a list of QPUs sorted by current load (updated on the fly)
-    def pick_nonfull_qpu() -> Optional[int]:
-        loads = [(len(qpu_qubits[p]), p) for p in range(P)]
-        loads.sort()
-        for load, p in loads:
-            if load < L:
-                return p
-        return None
-
-    for p in range(P):
-        while len(qpu_qubits[p]) > L:
-            q = qpu_qubits[p].pop()  # move an arbitrary overflow qubit
-            dst = pick_nonfull_qpu()
-            if dst is None:
-                # should not happen; but if it does, put it back and stop
-                qpu_qubits[p].append(q)
-                break
-            qpu_qubits[dst].append(q)
-            parts[q] = dst
-
-    return {q: int(parts[q]) for q in range(Q)}
 
 
 # ----------------------------- gate_cover core -----------------------------
@@ -272,20 +139,16 @@ def _extract_gates(layers: np.ndarray) -> List[Gate]:
 
 
 def _initial_mapping(Q: int, L: int) -> Tuple[Dict[int, int], List[Set[int]]]:
-    """Sequential packing into P=floor(Q/L)+1 QPUs."""
-    P = qpu_count(Q, L)
+    if L <= 0:
+        raise ValueError("L must be > 0.")
+    # P = math.ceil(Q / L)
+    P=Q//L + 1
     mapping: Dict[int, int] = {}
     qpu_qubits: List[Set[int]] = [set() for _ in range(P)]
-    counts = [0] * P
-    p = 0
     for q in range(Q):
-        while p < P and counts[p] >= L:
-            p += 1
-        if p >= P:
-            p = P - 1
+        p = q // L
         mapping[q] = p
         qpu_qubits[p].add(q)
-        counts[p] += 1
     return mapping, qpu_qubits
 
 
@@ -376,7 +239,9 @@ def _teledata_candidates_for_gate(
 
 def _telegate_candidate_for_gate() -> TeleCandidate:
     """
-    Per-gate TeleGate (no multi-gate reuse), so we don't double-count future gates.
+    Under the user's requested semantics ("do not put future covered gates into covered/D"),
+    we DO NOT implement multi-gate TeleGate reuse here, otherwise you'd double-count future gates.
+    So TeleGate is per-remote-gate:
       - ncov_est = 1
       - n_epr = 1
     """
@@ -393,28 +258,28 @@ def gate_cover(
     """
     Gate-by-gate scheduling.
 
-    IMPORTANT:
+    IMPORTANT CHANGE (per user):
       - We DO NOT pre-mark future gates as covered.
       - Future gates ONLY contribute to objective estimation (ncov_est).
-      - Every gate is visited in order; its local/remote nature is evaluated under CURRENT mapping.
+      - Every gate will be visited in order; its local/remote nature is evaluated under CURRENT mapping.
     """
     if layers.size == 0:
         return {"D": [], "final_mapping": {}, "gates": []}
 
     gates = _extract_gates(layers)
     Q = layers.shape[1]
-    P = qpu_count(Q, L)
 
-    # init mapping
     if mapping0 is None:
         mapping, qpu_qubits = _initial_mapping(Q, L)
     else:
         mapping = dict(mapping0)
+        # P = math.ceil(Q / L)
+        P=Q//L + 1
         qpu_qubits = [set() for _ in range(P)]
         for q in range(Q):
             if q not in mapping:
                 raise ValueError(f"mapping0 missing qubit {q}.")
-            p = int(mapping[q])
+            p = mapping[q]
             if not (0 <= p < P):
                 raise ValueError(f"mapping0[{q}]={p} invalid, P={P}.")
             qpu_qubits[p].add(q)
@@ -445,6 +310,7 @@ def gate_cover(
                 "cost": best.cost(),
             })
         else:
+            # execute this remote gate via TeleGate
             D.append({
                 "op": "TELEGATE",
                 "gid_trigger": g.gid,
@@ -462,41 +328,43 @@ def gate_cover(
 # ----------------------------- main -----------------------------
 
 if __name__ == "__main__":
-    num_qubit = 30
-    L = 25
-    for num_qubit in range(30, 101, 10):
-        # Use your confirmed existing OneDrive path:
-        # file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\random_circuits_new\{num_qubit}qubits_{num_qubit}layers.txt"
-        file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\qft_circuits\qft_circuit({num_qubit}qubits).txt"
+    
+    circuit_types = ["random", "qft"]
 
-        circuit = Circuit(file_path)
-        Q = circuit.num_qubits
-        P = qpu_count(Q, L)
+    base_root = rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals"
+    for L in [5,15,25]:
+        for circuit_type in circuit_types:
 
-        # print("Parsed #qubits:", Q)
-        # print("Parsed #2q gates:", circuit.count_2q_gates())
-        # print("QPU capacity L:", L)
-        # print("Available QPUs P = floor(Q/L)+1:", P)
+            out_dir = os.path.join(base_root, circuit_type, f"{L}_cap")
+            os.makedirs(out_dir, exist_ok=True)
 
-        # METIS initial mapping (falls back if pymetis not installed)
-        mapping0 = metis_initial_mapping(circuit.layers, L)
-        # print(f"Initial mapping (qubit -> QPU): {mapping0}")
+            # 👉 CSV 文件名
+            out_file = os.path.join(out_dir, "results.csv")
 
-        # Run scheduler (full future lookahead for objective estimation)
-        result = gate_cover(circuit.layers, L, lookahead_gates=10**9, mapping0=mapping0)
+            with open(out_file, "w", newline="") as f:
+                # CSV header
+                f.write("num_qubit,total_epr\n")
 
-        total_epr = sum(op.get("n_epr", 0) for op in result["D"])
-        num_telegate = sum(1 for op in result["D"] if op.get("op") == "TELEGATE")
-        num_teledata = sum(1 for op in result["D"] if op.get("op") == "TELEDATA")
+                for num_qubit in range(30, 101, 10):
 
-        # print("\nScheduled operations:")
-        # for op in result["D"]:
-        #     print(op)
+                    if circuit_type == "random":
+                        file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\random_circuits_new\{num_qubit}qubits_{num_qubit}layers.txt"
+                    else:  # qft
+                        file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\qft_circuits\qft_circuit({num_qubit}qubits).txt"
 
-        # print("\nSummary:")
-        # print("  #TELEGATE ops:", num_telegate)
-        # print("  #TELEDATA ops:", num_teledata)
-        print("Using METIS:", "pymetis" in sys.modules)
-        print("P =", P)
-        print("Initial mapping load:", [list(mapping0.values()).count(p) for p in range(P)])
-        print(f"num qubit: {num_qubit}, Total EPR pairs consumed:", total_epr)
+                    circuit = Circuit(file_path)
+
+                    result = gate_cover(
+                        circuit.layers,
+                        L,
+                        lookahead_gates=10**9
+                    )
+
+                    total_epr = sum(op.get("n_epr", 0) for op in result["D"])
+
+                    # 👉 CSV 行
+                    f.write(f"{num_qubit},{total_epr}\n")
+
+                    print(f"[{circuit_type}] num_qubit={num_qubit}, total_epr={total_epr}")
+
+            print(f"CSV written to: {out_file}\n")

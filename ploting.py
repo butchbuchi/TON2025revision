@@ -10,7 +10,7 @@ import numpy as np
 def parallel_processing_plotting():
 
     # === 参数 ===
-    base_dir = r"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_notrans/QFT/PGGL/5_cap"
+    base_dir = r"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_notrans/QFT/PGGL/5_cap"
     target_circuit_size = 100
     num_runs = 18
 
@@ -60,17 +60,19 @@ def comprehensive_comparison_plotting(circuit_type="Rd",qpu_limit=5):
     import matplotlib.pyplot as plt
 
     # 文件路径和 QPU 限制
-    filepath_ours = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
+    filepath_ours = f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
     if circuit_type == "QFT":
-        filepath_SA = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/QFT/Telegate/QFT_{qpu_limit}_limitQPU_min.csv"
-        filepath_stitch =f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
+        filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/QFT/Telegate/QFT_{qpu_limit}_limitQPU_min.csv"
+        filepath_stitch =f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
+        filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\qft\{qpu_limit}_cap\results.csv"
     if circuit_type == "Rd":
-        filepath_SA = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/{circuit_type}/Telegate/Rd({qpu_limit})_Telegate.csv"
-        filepath_stitch =f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/Rd/ZS/Rd({qpu_limit})_ZS.csv"
-
+        filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/{circuit_type}/Telegate/Rd({qpu_limit})_Telegate.csv"
+        filepath_stitch =f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/Rd/ZS/Rd({qpu_limit})_ZS.csv"
+        filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\random\{qpu_limit}_cap\results.csv"
     # 数据加载./
     x = list(range(30, 101, 10))
     stitch_cost = pd.read_csv(filepath_stitch)['stitch']
+    gatecover_cost=pd.read_csv(filepath_gatecover)['total_epr']
     ours_cost = pd.read_csv(filepath_ours)['y_local_reg']
     if circuit_type == "QFT":
         SA_cost = pd.read_csv(filepath_SA)['y_local_reg']
@@ -94,12 +96,17 @@ def comprehensive_comparison_plotting(circuit_type="Rd",qpu_limit=5):
     plt.bar(stitch_x, stitch_cost, width=bar_width, label="Teledata-ZS", color='#FFC61E', alpha=1,hatch='.',edgecolor='white')
     # plt.vlines(stitch_x, stitch_min, stitch_max, colors='black', linewidth=1.5)
 
+    #gatecover
+    gatecover_x = [i + 2.2*bar_width for i in x]
+    plt.bar(gatecover_x, gatecover_cost, width=bar_width, label="GateCover", color='#8ECFC9', alpha=1,hatch='x',edgecolor='white')
+    
     # Telegate-SA（right）
     sa_x = [i + 1.1*bar_width for i in x]
     plt.bar(sa_x, SA_cost, width=bar_width, label="Telegate-SA", color='#009ADE', alpha=1,hatch='\\',edgecolor='white')
     # plt.vlines(sa_x, SA_min, SA_max, colors='black', linewidth=1.5)  # 浮动线
 
-    # 坐标轴标签和图例
+    
+    # 坐标轴标签和图例E
     plt.xlabel('Circuit Width', fontsize=28)
     plt.ylabel('#Entanglement', fontsize=28)
     plt.legend(loc='upper left',bbox_to_anchor=(0, 1.01), borderaxespad=0,fontsize=24, framealpha=0, edgecolor='none', labelspacing=0.25)
@@ -116,36 +123,40 @@ def comprehensive_comparison_plotting(circuit_type="Rd",qpu_limit=5):
     plt.tight_layout()
     plt.show()
     # 保存图形
-    # output_dir = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/paper_fig/comprehensive_comparison/{circuit_type}"
+    # output_dir = f"C:/Users/Butch/OneDrive - Stony Brook University/TON/paper_fig/comprehensive_comparison/{circuit_type}"
     # os.makedirs(output_dir, exist_ok=True)
     # output_file = f"{output_dir}/{circuit_type}_{qpu_limit}_limitQPU_comparison.svg"    
     # plt.savefig(output_file, dpi=300, bbox_inches='tight')
     # print(f"Figure saved to {output_file}")
 
-def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Performance_Gain_mode=True):
+def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performance_Gain_mode=True):
     import pandas as pd
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
 
     # 文件路径
-    filepath_ours = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_{trans}/{circuit_type}/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
+    filepath_ours = f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_{trans}/{circuit_type}/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
     
     if circuit_type == "QFT":
-        filepath_random=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_random/QFT/{qpu_limit}_cap.csv"
-        filepath_SA = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/QFT/Telegate/QFT_{qpu_limit}_limitQPU_min.csv"
-        filepath_stitch = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
+        filepath_random=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_random/QFT/{qpu_limit}_cap.csv"
+        filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/QFT/Telegate/QFT_{qpu_limit}_limitQPU_min.csv"
+        filepath_stitch = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
+        filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\qft\{qpu_limit}_cap\results.csv"
     else:
-        filepath_random=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_random/Rd/{qpu_limit}_cap.csv"
-        filepath_SA = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/{circuit_type}/Telegate/Rd({qpu_limit})_Telegate.csv"
-        filepath_stitch = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/Rd/ZS/Rd({qpu_limit})_ZS.csv"
+        filepath_random=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_random/Rd/{qpu_limit}_cap.csv"
+        filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/{circuit_type}/Telegate/Rd({qpu_limit})_Telegate.csv"
+        filepath_stitch = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/Rd/ZS/Rd({qpu_limit})_ZS.csv"
+        filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\random\{qpu_limit}_cap\results.csv"
 
     # 加载数据
     x = list(range(30, 101, 10))  # circuit width
     ours_cost = pd.read_csv(filepath_ours)['y_local_reg']
     random_cost = pd.read_csv(filepath_random)['y_local_reg'] 
     stitch_cost = pd.read_csv(filepath_stitch)['stitch']
+    gatecover_cost=pd.read_csv(filepath_gatecover)['total_epr']
     SA_cost = pd.read_csv(filepath_SA)['y_local_reg'] if circuit_type == "QFT" else pd.read_csv(filepath_SA)['cost']
+    
 
     if Performance_Gain_mode:
         # 计算相对比值
@@ -154,12 +165,13 @@ def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Perfor
         zs_ratio = [(z-o )*100/ z for z, o in zip( stitch_cost,ours_cost)]
         sa_ratio = [(s-o)*100 / s for s, o in zip(SA_cost,ours_cost)]
         random_ratio = [(r-o)*100 / r for r, o in zip(random_cost,ours_cost)]
-
+        gatecover_ratio = [(g-o)*100 / g for g, o in zip(gatecover_cost,ours_cost)]
             # 主图：折线图（比值）
         fig, ax1 = plt.subplots(figsize=(10, 6))
 
         ax1.plot(x, sa_ratio, marker='o', label='vs Telegate-SA', linewidth=3, markersize=10, color='#009ADE',zorder=10)
         ax1.plot(x, random_ratio, marker='^', label='vs Telegate-RD', linewidth=3, markersize=10, color='#FF1F5B',zorder=10)
+        ax1.plot(x, gatecover_ratio, marker='x', label='vs GateCover', linewidth=3, markersize=10, color='#8ECFC9',zorder=10)
         ax1.plot(x, zs_ratio, marker='s', label='vs Teledata-ZS', linewidth=3, markersize=10, color='#FFC61E',zorder=10)
 
 
@@ -171,7 +183,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Perfor
         ax1.set_xticks(x)
         ax1.set_xticklabels(x, fontsize=27)
         ax1.grid(alpha=0.6, linestyle=':', linewidth=0.75)
-        ax1.set_ylim(0,80)
+        # ax1.set_ylim(0,100)
 
         # 第二 y 轴：柱状图（ours_cost）
         ax2 = ax1.twinx()
@@ -189,7 +201,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Perfor
         # 合并图例
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        lg1=ax1.legend(lines1[0:3] , labels1[0:3] ,
+        lg1=ax1.legend(lines1[0:4] , labels1[0:4] ,
                 loc='upper left',bbox_to_anchor=(0, 1.03),
                 ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.5)
         # leg2=ax1.legend(lines1[1:3] , labels1[1:3] ,
@@ -250,7 +262,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Perfor
             ax2.legend(loc='upper left', bbox_to_anchor=(-0.03, 0.55), fontsize=22,framealpha=0, edgecolor='none',labelspacing=0.2)
 
     plt.tight_layout()
-    save_path = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/paper_fig/comprehensive_comparison/ratio_plot/{circuit_type}/comparison_ratio_{circuit_type}_{qpu_limit}.svg"
+    save_path = f"paper_fig/comprehensive_comparison/ratio_plot/{circuit_type}/comparison_ratio_{circuit_type}_{qpu_limit}.svg"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Saved to: {save_path}")
     plt.show()
@@ -285,7 +297,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="notrans",qpu_limit=5,Perfor
     # # plt.show()
 
     # # 可选保存
-    # plt.savefig(f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/paper_fig/comprehensive_comparison/ratio_plot/{circuit_type}/comparison_ratio_{circuit_type}_{qpu_limit}.svg", dpi=300, bbox_inches='tight')
+    # plt.savefig(f"C:/Users/Butch/OneDrive - Stony Brook University/TON/paper_fig/comprehensive_comparison/ratio_plot/{circuit_type}/comparison_ratio_{circuit_type}_{qpu_limit}.svg", dpi=300, bbox_inches='tight')
 
 
 # Bar chart: CPG-BP with/without extra-space initialization
@@ -295,9 +307,9 @@ def extra_space_initialization_plot():
 
     num_qubit=25
     circuit_type="QFT"
-    zero_extra_filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/0_extra_space/min.csv"
-    one_extra_filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/1_extra_space/min.csv"
-    two_extra_filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/2_extra_space/min.csv"
+    zero_extra_filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/0_extra_space/min.csv"
+    one_extra_filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/1_extra_space/min.csv"
+    two_extra_filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/{circuit_type}/PGGL/{num_qubit}_cap/2_extra_space/min.csv"
     # 数据
     circuit_size = [30, 40, 50, 60, 70, 80, 90, 100]
 
@@ -332,7 +344,7 @@ def extra_space_initialization_plot():
 def tele_ratio():
         # Telegate/Teledata ratio
     qpu_limit=5
-    filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/5_cap/1_extra_space/min.csv"
+    filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/5_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -346,7 +358,7 @@ def tele_ratio():
 
 
     qpu_limit=15
-    filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/15_cap/1_extra_space/min.csv"
+    filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/15_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -359,7 +371,7 @@ def tele_ratio():
 
 
     qpu_limit=25
-    filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/25_cap/1_extra_space/min.csv"
+    filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/Rd/PGGL/25_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -372,7 +384,7 @@ def tele_ratio():
 
 
     qpu_limit=5
-    filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/5_cap/1_extra_space/min.csv"
+    filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/5_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -384,7 +396,7 @@ def tele_ratio():
     plt.plot(x,ratio,marker='s',markersize=14,label=f"QFT, L={qpu_limit}",linestyle='-',color='#FF1F5B',alpha=1,linewidth=3)
 
     qpu_limit=15
-    filepath="C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/15_cap/1_extra_space/min.csv"
+    filepath="C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/15_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -396,7 +408,7 @@ def tele_ratio():
     plt.plot(x,ratio,marker='+',markersize=26,label=f"QFT, L={qpu_limit}",linestyle='-',color='#00CD6C',alpha=1,linewidth=3)
 
     qpu_limit=25
-    filepath=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/25_cap/1_extra_space/min.csv"
+    filepath=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/parallel_processing_Data_trans/QFT/PGGL/25_cap/1_extra_space/min.csv"
     x=list(range(30,101,10))
     telegate_cost=pd.read_csv(filepath)['telegate_cost']
     teledata_cost=pd.read_csv(filepath)['y_local_reg']
@@ -421,8 +433,8 @@ def iterative_progress():
         # training progress
     # file_path_with="experiment_plots/Controlled Experiment/qft/nash_localgate_regularization_v2/training_progress/with_trick_qft_circuit_100qubits.csv"
     # file_path_without="experiment_plots/Controlled Experiment/qft/nash_localgate_regularization_v2/training_progress/without_trick_qft_circuit_100qubits.csv"
-    file_path="C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/FT_perform_evals/Data_trans/Rd/iterative_progress/156_cap/training_156_60_200period_1000epochs_100GL_start_point.csv"
-    # file_path="C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_trans/QFT/iterative_progress/25_cap/training_25_100_50period_1000epochs_100GL_start_point_notrans.csv"
+    file_path="C:/Users/Butch/OneDrive - Stony Brook University/TON/FT_perform_evals/Data_trans/Rd/iterative_progress/156_cap/training_156_60_200period_1000epochs_100GL_start_point.csv"
+    # file_path="C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_trans/QFT/iterative_progress/25_cap/training_25_100_50period_1000epochs_100GL_start_point_notrans.csv"
     # 数据读取
     x = pd.read_csv(file_path)['iteration']
     y_with = pd.read_csv(file_path)['PGGL_cost']
@@ -492,8 +504,8 @@ def iterative_progress():
 def running_time():
         #plot for time evaluation
     qpu_limit=25
-    filepath_stitch=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
-    filepath_ours=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/experiment_plots/Controlled Experiment/qft/nash_localgate_regularization_v2_average_final_plots/qft_{qpu_limit}_limitQPU.csv"
+    filepath_stitch=f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
+    filepath_ours=f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/experiment_plots/Controlled Experiment/qft/nash_localgate_regularization_v2_average_final_plots/qft_{qpu_limit}_limitQPU.csv"
     x=list(range(30,101,10))
     stitch_cost=pd.read_csv(filepath_stitch)['time']
     ours_cost=pd.read_csv(filepath_ours)['time']
@@ -521,7 +533,7 @@ from matplotlib.lines import Line2D
 
 def trans_comparison(qpu_limit=25):
     # 文件路径
-    base = "C:/Users/Butch/Desktop/OneDrive - Stony Brook University/TON/NFT_perform_evals"
+    base = "C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals"
     fp_trans_min  = f"{base}/parallel_processing_Data_trans/QFT/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
     fp_trans_max  = f"{base}/parallel_processing_Data_trans/QFT/PGGL/{qpu_limit}_cap/1_extra_space/max.csv"
     fp_not_min    = f"{base}/parallel_processing_Data_notrans/QFT/PGGL/{qpu_limit}_cap/1_extra_space/min.csv"
@@ -595,4 +607,4 @@ if __name__ == "__main__":
     # iterative_progress()
     # extra_space_initialization_plot()
     # running_time()
-    trans_comparison(25)
+    comparative_ratio_plot("Rd","trans",25,Performance_Gain_mode=True)
