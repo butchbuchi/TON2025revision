@@ -13,6 +13,7 @@ from typing import Dict, List, Tuple, Optional, Set, Any
 
 import numpy as np
 
+random_seed = 432
 
 # ----------------------------- Parsing -----------------------------
 
@@ -248,6 +249,11 @@ def _telegate_candidate_for_gate() -> TeleCandidate:
     return TeleCandidate(kind="TeleGate", migrations=[], ncov_est=1, n_epr=1)
 
 
+
+
+
+
+
 def gate_cover(
     layers: np.ndarray,
     L: int,
@@ -262,20 +268,33 @@ def gate_cover(
       - We DO NOT pre-mark future gates as covered.
       - Future gates ONLY contribute to objective estimation (ncov_est).
       - Every gate will be visited in order; its local/remote nature is evaluated under CURRENT mapping.
+
+    New (per user):
+      - Return mapping_by_layer: a T x Q list-of-lists where
+            mapping_by_layer[t][q] = QPU id of logical qubit q
+        after finishing all gates in layer t (i.e., end-of-layer snapshot).
     """
     if layers.size == 0:
-        return {"D": [], "final_mapping": {}, "gates": []}
+        return {
+            "D": [],
+            "final_mapping": {},
+            "gates": [],
+            "mapping_events": [],
+            "mapping_by_layer": [],
+        }
 
     gates = _extract_gates(layers)
+    T = layers.shape[0]
     Q = layers.shape[1]
 
     if mapping0 is None:
         mapping, qpu_qubits = _initial_mapping(Q, L)
     else:
         mapping = dict(mapping0)
-        # P = math.ceil(Q / L)
-        P=Q//L + 1
+        # Per user: P = floor(Q/L) + 1
+        P = Q // L + 1
         qpu_qubits = [set() for _ in range(P)]
+
         for q in range(Q):
             if q not in mapping:
                 raise ValueError(f"mapping0 missing qubit {q}.")
@@ -283,53 +302,137 @@ def gate_cover(
             if not (0 <= p < P):
                 raise ValueError(f"mapping0[{q}]={p} invalid, P={P}.")
             qpu_qubits[p].add(q)
+
         for p in range(P):
             if len(qpu_qubits[p]) > L:
-                raise ValueError(f"Initial mapping violates capacity: QPU {p} has {len(qpu_qubits[p])}>{L}.")
+                raise ValueError(
+                    f"Initial mapping violates capacity: QPU {p} has {len(qpu_qubits[p])}>{L}."
+                )
 
     D: List[Dict[str, Any]] = []
 
+    # (Scheme B) sparse log: only when TELEDATA changes mapping
+    mapping_events: List[Dict[str, Any]] = []
+
+    # Full per-layer mapping snapshots: T x Q
+    mapping_by_layer: List[Optional[List[int]]] = [None] * T
+
+    def _snapshot_vector() -> List[int]:
+        # mapping[q] must exist for all q in [0..Q-1]
+        return [mapping[q] for q in range(Q)]
+
+    # Edge case: if there are no extracted gates, mapping never changes.
+    if len(gates) == 0:
+        v = _snapshot_vector()
+        for t in range(T):
+            mapping_by_layer[t] = v[:]  # copy row
+        return {
+            "D": D,
+            "final_mapping": mapping,
+            "gates": gates,
+            "mapping_events": mapping_events,
+            "mapping_by_layer": mapping_by_layer,  # type: ignore
+        }
+
+    last_layer_done = -1  # we will fill mapping_by_layer in order
+
     for idx, g in enumerate(gates):
+        # If we jumped to a new layer, finalize snapshots for layers that have ended.
+        # At this moment, 'mapping' is already the mapping AFTER finishing last processed gate,
+        # i.e., end-of-(g.layer-1) and any empty layers before g.layer.
+        if g.layer > last_layer_done + 1:
+            # layers (last_layer_done+1 .. g.layer-1) have no more gates to process (either empty
+            # or we just finished the previous layer). Snapshot current mapping for them.
+            v = _snapshot_vector()
+            for t in range(last_layer_done + 1, min(g.layer, T)):
+                mapping_by_layer[t] = v[:]  # copy row
+            last_layer_done = g.layer - 1
+
+        # Now process gate g (which is in layer g.layer)
         if _is_local(g, mapping):
-            D.append({"op": "LOCAL", "gid": g.gid, "layer": g.layer, "control": g.control, "target": g.target})
-            continue
-
-        td_cands = _teledata_candidates_for_gate(g, gates, idx, mapping, qpu_qubits, L, lookahead_gates)
-        tg_cand = _telegate_candidate_for_gate()
-        best = min(td_cands + [tg_cand], key=lambda c: c.cost())
-
-        if best.kind == "TeleData":
-            _apply_migrations(mapping, qpu_qubits, best.migrations)
-            D.append({
-                "op": "TELEDATA",
-                "gid_trigger": g.gid,
-                "layer_trigger": g.layer,
-                "migrations": best.migrations,
-                "n_epr": best.n_epr,
-                "ncov_est": best.ncov_est,
-                "cost": best.cost(),
-            })
+            D.append(
+                {
+                    "op": "LOCAL",
+                    "gid": g.gid,
+                    "layer": g.layer,
+                    "control": g.control,
+                    "target": g.target,
+                }
+            )
         else:
-            # execute this remote gate via TeleGate
-            D.append({
-                "op": "TELEGATE",
-                "gid_trigger": g.gid,
-                "layer_trigger": g.layer,
-                "control": g.control,
-                "target": g.target,
-                "n_epr": 1,
-                "ncov_est": 1,
-                "cost": 1.0,
-            })
+            td_cands = _teledata_candidates_for_gate(
+                g, gates, idx, mapping, qpu_qubits, L, lookahead_gates
+            )
+            tg_cand = _telegate_candidate_for_gate()
+            best = min(td_cands + [tg_cand], key=lambda c: c.cost())
 
-    return {"D": D, "final_mapping": mapping, "gates": gates}
+            if best.kind == "TeleData":
+                _apply_migrations(mapping, qpu_qubits, best.migrations)
+                D.append(
+                    {
+                        "op": "TELEDATA",
+                        "gid_trigger": g.gid,
+                        "layer_trigger": g.layer,
+                        "migrations": best.migrations,
+                        "n_epr": best.n_epr,
+                        "ncov_est": best.ncov_est,
+                        "cost": best.cost(),
+                    }
+                )
+                mapping_events.append(
+                    {
+                        "gid_trigger": g.gid,
+                        "layer_trigger": g.layer,
+                        "migrations": best.migrations,
+                        "mapping": mapping.copy(),  # snapshot dict (optional)
+                    }
+                )
+            else:
+                D.append(
+                    {
+                        "op": "TELEGATE",
+                        "gid_trigger": g.gid,
+                        "layer_trigger": g.layer,
+                        "control": g.control,
+                        "target": g.target,
+                        "n_epr": 1,
+                        "ncov_est": 1,
+                        "cost": 1.0,
+                    }
+                )
+
+        # If this is the last gate in its layer (lookahead to next gate's layer), snapshot end-of-layer.
+        next_layer = gates[idx + 1].layer if idx + 1 < len(gates) else None
+        if next_layer is None or next_layer != g.layer:
+            if 0 <= g.layer < T:
+                mapping_by_layer[g.layer] = _snapshot_vector()
+                last_layer_done = max(last_layer_done, g.layer)
+
+    # Fill any remaining tail layers after the last gate layer (including possibly empty layers)
+    if last_layer_done < T - 1:
+        v = _snapshot_vector()
+        for t in range(last_layer_done + 1, T):
+            mapping_by_layer[t] = v[:]  # copy row
+
+    # Sanity: ensure no None remains (shouldn't happen, but guard)
+    for t in range(T):
+        if mapping_by_layer[t] is None:
+            mapping_by_layer[t] = _snapshot_vector()
+
+    return {
+        "D": D,
+        "final_mapping": mapping,          # final mapping after full scheduling
+        "gates": gates,
+        "mapping_events": mapping_events,  # kept (scheme B)
+        "mapping_by_layer": mapping_by_layer,
+    }
 
 
 # ----------------------------- main -----------------------------
 
 if __name__ == "__main__":
     
-    circuit_types = ["random", "qft"]
+    circuit_types = ["random"]
 
     base_root = rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals"
     for L in [5,15,25]:
@@ -345,8 +448,9 @@ if __name__ == "__main__":
                 # CSV header
                 f.write("num_qubit,total_epr\n")
 
-                for num_qubit in range(30, 101, 10):
-
+                # for i in range(1,9):
+                #     num_qubit=math.ceil((i+0.5)*L)
+                for num_qubit in range(30,101,10):
                     if circuit_type == "random":
                         file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\random_circuits_new\{num_qubit}qubits_{num_qubit}layers.txt"
                     else:  # qft

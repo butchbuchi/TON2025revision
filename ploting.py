@@ -143,11 +143,13 @@ def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performa
         filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/QFT/Telegate/QFT_{qpu_limit}_limitQPU_min.csv"
         filepath_stitch = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/baseline_code/stitch_final_plots/stitch_{qpu_limit}QPU_limit.csv"
         filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\qft\{qpu_limit}_cap\results.csv"
+        filepath_CGplusLABUBU=rf"C:\Users\Butch\Desktop\TON2025revision\NFT_perform_evals\Data\qft\PGGL\{qpu_limit}_cap\4.csv"
     else:
         filepath_random=f"C:/Users/Butch/OneDrive - Stony Brook University/TON/NFT_perform_evals/Data_random/Rd/{qpu_limit}_cap.csv"
         filepath_SA = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/{circuit_type}/Telegate/Rd({qpu_limit})_Telegate.csv"
         filepath_stitch = f"C:/Users/Butch/OneDrive - Stony Brook University/ICDCS_2025/Camare_ready/Comprehensive_perform_evals/Data/Rd/ZS/Rd({qpu_limit})_ZS.csv"
         filepath_gatecover=rf"C:\Users\Butch\Desktop\TON2025revision\gate_cover_evals\random\{qpu_limit}_cap\results.csv"
+        filepath_CGplusLABUBU=rf"C:\Users\Butch\Desktop\TON2025revision\NFT_perform_evals\Data\Rd\PGGL\{qpu_limit}_cap\4.csv"
 
     # 加载数据
     x = list(range(30, 101, 10))  # circuit width
@@ -156,7 +158,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performa
     stitch_cost = pd.read_csv(filepath_stitch)['stitch']
     gatecover_cost=pd.read_csv(filepath_gatecover)['total_epr']
     SA_cost = pd.read_csv(filepath_SA)['y_local_reg'] if circuit_type == "QFT" else pd.read_csv(filepath_SA)['cost']
-    
+    CGplusLABUBU_cost = pd.read_csv(filepath_CGplusLABUBU)['y_local_reg'] 
 
     if Performance_Gain_mode:
         # 计算相对比值
@@ -166,13 +168,16 @@ def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performa
         sa_ratio = [(s-o)*100 / s for s, o in zip(SA_cost,ours_cost)]
         random_ratio = [(r-o)*100 / r for r, o in zip(random_cost,ours_cost)]
         gatecover_ratio = [(g-o)*100 / g for g, o in zip(gatecover_cost,ours_cost)]
+        CGplusLABUBU_cost_ratio = [(c-o)*100 / c for c, o in zip(CGplusLABUBU_cost,ours_cost)]
             # 主图：折线图（比值）
         fig, ax1 = plt.subplots(figsize=(10, 6))
 
         ax1.plot(x, sa_ratio, marker='o', label='vs Telegate-SA', linewidth=3, markersize=10, color='#009ADE',zorder=10)
         ax1.plot(x, random_ratio, marker='^', label='vs Telegate-RD', linewidth=3, markersize=10, color='#FF1F5B',zorder=10)
-        ax1.plot(x, gatecover_ratio, marker='x', label='vs GateCover', linewidth=3, markersize=10, color='#8ECFC9',zorder=10)
         ax1.plot(x, zs_ratio, marker='s', label='vs Teledata-ZS', linewidth=3, markersize=10, color='#FFC61E',zorder=10)
+        ax1.plot(x, gatecover_ratio, marker='x', label='vs GC', linewidth=3, markersize=10, color='#8ECFC9',zorder=10)
+        ax1.plot(x, CGplusLABUBU_cost_ratio, marker='d', label='vs GC+LABUBU', linewidth=3, markersize=10, color='#BE88DC',zorder=10)
+        
 
 
         ax1.set_xlabel("Circuit Width", fontsize=28)
@@ -183,7 +188,7 @@ def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performa
         ax1.set_xticks(x)
         ax1.set_xticklabels(x, fontsize=27)
         ax1.grid(alpha=0.6, linestyle=':', linewidth=0.75)
-        # ax1.set_ylim(0,100)
+        ax1.set_ylim(-20,80)
 
         # 第二 y 轴：柱状图（ours_cost）
         ax2 = ax1.twinx()
@@ -201,15 +206,15 @@ def comparative_ratio_plot(circuit_type="Rd", trans="trans",qpu_limit=5,Performa
         # 合并图例
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        lg1=ax1.legend(lines1[0:4] , labels1[0:4] ,
-                loc='upper left',bbox_to_anchor=(0, 1.03),
-                ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.5)
-        # leg2=ax1.legend(lines1[1:3] , labels1[1:3] ,
-        #         loc='upper left',bbox_to_anchor=(0, 0.84),
-        #         ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.5)
-        # ax1.add_artist(lg1)
+        lg1=ax1.legend(lines1[0:3] , labels1[0:3] ,
+                loc='upper left',bbox_to_anchor=(-0.03, 1.05),
+                ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.1)
+        leg2=ax1.legend(lines1[3:5] , labels1[3:5] ,
+                loc='upper left',bbox_to_anchor=(-0.02, 0.72),
+                ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.1)
+        ax1.add_artist(lg1)
         ax2.legend(lines2 , labels2 ,
-                loc='upper left',bbox_to_anchor=(0.65, 1.03),
+                loc='upper left',bbox_to_anchor=(0.55, 1.03),
                 ncol=1, fontsize=22, framealpha=0, edgecolor='none',labelspacing=0.5)
         
 
@@ -607,4 +612,4 @@ if __name__ == "__main__":
     # iterative_progress()
     # extra_space_initialization_plot()
     # running_time()
-    comparative_ratio_plot("Rd","trans",25,Performance_Gain_mode=True)
+    comparative_ratio_plot("Rd","trans",5,Performance_Gain_mode=True)

@@ -11,6 +11,7 @@ import time
 import math
 import numpy as np
 from FT_circuit import FT_circuit_func
+import gate_cover_randominit
 # from baseline_code.gurobi.gurobi_verification import read_mapping
 
 #this function checks whether the QPU has overflowed
@@ -559,6 +560,11 @@ def optimize_under(file_path,num_qpu,limit_qpu,epochs,anastz=None,anastz_mode=No
                 nodes[i].map=anastz[i].copy()
                 for j in range(nodes[i].num_qpu):
                     nodes[i].usage_qpu[j] = len([qpu for qpu in nodes[i].map if qpu == j])
+        elif anastz_mode == "gatecover":
+            for i in range(len(nodes)):
+                nodes[i].map=anastz[i].copy()
+                for j in range(nodes[i].num_qpu):
+                    nodes[i].usage_qpu[j] = len([qpu for qpu in nodes[i].map if qpu == j])
     # for node in nodes:
     #     node.shuffle_node()
     
@@ -609,19 +615,20 @@ def optimize_under(file_path,num_qpu,limit_qpu,epochs,anastz=None,anastz_mode=No
     # for epoch in (range(epochs+1 ,epochs+101)): 
     #     total_PG(nodes)
     cycle=50
-    
+    cost=1e9
     for epoch in range(100):
         total_PG(nodes)
     for epoch in range (100,epochs-100):
         if epoch%cycle==0:
+            cost=min(cost,total_cost(nodes))
             total_GL(nodes)
         else:
             total_PG(nodes)
     for epoch in range(epochs-100,epochs):
         total_PG(nodes)
         
-        print("{}/{} epochs optimized".format(epoch,epochs))
-    cost=total_cost(nodes)
+        # print("{}/{} epochs optimized".format(epoch,epochs))
+    cost=min(cost,total_cost(nodes))
     remote_cost_list=total_remote_gates(nodes)
     max_QPU=0
     for node in nodes:
@@ -629,7 +636,7 @@ def optimize_under(file_path,num_qpu,limit_qpu,epochs,anastz=None,anastz_mode=No
             max_QPU=max(node.map)
     return cost,remote_cost_list, max_QPU+1
 
-def experiment_qft_constant_limit(run_id,num_qpu,limit_qpu,seed,SA=False,repeat_times=1):
+def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,seed,SA=False,repeat_times=1,anastz=None):
     random.seed(seed)
     np.random.seed(seed)
     global calling_time
@@ -654,8 +661,10 @@ def experiment_qft_constant_limit(run_id,num_qpu,limit_qpu,seed,SA=False,repeat_
                 'teledata_cost', 'num_qpu', 'time'
             ]).to_csv(output_file, index=False)
 
-        for num_qubit in range(30, 101, 10):
-            file_path = f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/random_circuits/{num_qubit}qubits_{num_qubit}layers.txt"
+        # for i in range(1,9):
+        #     num_qubit=math.ceil((i+0.5)*L)
+        for num_qubit in (range(30,101,10)):
+            file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\random_circuits_new\{num_qubit}qubits_{num_qubit}layers.txt"
 
             ave_cost = 0
             ave_max_QPU = 0
@@ -663,10 +672,16 @@ def experiment_qft_constant_limit(run_id,num_qpu,limit_qpu,seed,SA=False,repeat_
             start_time = time.time()
 
             for k in range(1):
+                circuit = gate_cover_randominit.Circuit(file_path)
+                results=gate_cover_randominit.gate_cover(circuit.layers,L,lookahead_gates=1e9)
+                anastz=results["mapping_by_layer"]
+                total_epr = sum(op.get("n_epr", 0) for op in results["D"])
+                print(f"Total EPR pairs used in gate cover: {total_epr}")
                 cost, remote_cost_list, max_QPU = optimize_under(
                     file_path, num_qpu, limit_qpu, epochs,
-                    anastz=None, anastz_mode=False, print_nodes=False
+                    anastz=anastz, anastz_mode="gatecover", print_nodes=False
                 )
+                print(f"Cost after Labubu: {cost}")
                 ave_cost += cost
                 ave_max_QPU += max_QPU
                 ave_remote_cost += remote_cost_list
@@ -731,14 +746,16 @@ def experiment_qft_constant_limit(run_id,num_qpu,limit_qpu,seed,SA=False,repeat_
         # plt.show()
 
 
-for n in tqdm(range(25,26,10)):
+for n in tqdm([25,15,5]):
+# for n in tqdm([15]):
     mean=n
     std_dev = 0
     num_qpu=300
+    anastz="gatecover"
     qpu_limit=[int(round(random.gauss(mean,std_dev))) for _ in range(num_qpu)]
     sorted_qpu_limit=sorted(qpu_limit,reverse=True)
     print(sorted_qpu_limit)
-    experiment_qft_constant_limit(run_id=4,num_qpu=num_qpu,limit_qpu=sorted_qpu_limit,seed=1,repeat_times=1)
+    experiment_qft_constant_limit(n,run_id=4,num_qpu=num_qpu,limit_qpu=sorted_qpu_limit,seed=1,repeat_times=1, anastz=anastz)
 
 #count the number of CX gates in the FT circuit
 # for circuit_size in range(30,101,10):
