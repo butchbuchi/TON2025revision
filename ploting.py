@@ -600,7 +600,6 @@ def trans_comparison(qpu_limit=25):
 
 
 
-
 if __name__ == "__main__":
     # parallel_processing_plotting()
     # comprehensive_comparison_plotting(circuit_type="Rd",qpu_limit=5)

@@ -634,9 +634,12 @@ def optimize_under(file_path,num_qpu,limit_qpu,epochs,anastz=None,anastz_mode=No
     for node in nodes:
         if max(node.map)>max_QPU:
             max_QPU=max(node.map)
+    if print_nodes:
+        best_mappings=[node.map for node in nodes]
+        return cost,remote_cost_list, max_QPU+1, best_mappings
     return cost,remote_cost_list, max_QPU+1
 
-def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,seed,SA=False,repeat_times=1,anastz=None):
+def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,circuit_type="QFT",seed=None,SA=False,repeat_times=1,anastz=None,anastz_mode=None,print_nodes=False,plusGC=False):
     random.seed(seed)
     np.random.seed(seed)
     global calling_time
@@ -650,7 +653,12 @@ def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,seed,SA=False,repea
         telegate_cost=[]
         teledata_cost=[]
 
-        output_dir = f"NFT_perform_evals/Data/Rd/PGGL/{limit_qpu[0]}_cap"
+        if anastz is not None:
+            output_dir = f"NFT_perform_evals/Data/{circuit_type}/GCLABUBU/{limit_qpu[0]}_cap"
+        elif plusGC:
+            output_dir = f"NFT_perform_evals/Data/{circuit_type}/LABUBUGC/{limit_qpu[0]}_cap"
+        else:
+            output_dir = f"NFT_perform_evals/Data/{circuit_type}/PGGL/{limit_qpu[0]}_cap"
         os.makedirs(output_dir, exist_ok=True)
         output_file = f"{output_dir}/{run_id}.csv"
 
@@ -664,7 +672,10 @@ def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,seed,SA=False,repea
         # for i in range(1,9):
         #     num_qubit=math.ceil((i+0.5)*L)
         for num_qubit in (range(30,101,10)):
-            file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\random_circuits_new\{num_qubit}qubits_{num_qubit}layers.txt"
+            if circuit_type=="QFT":
+                 file_path = rf"C:\Users\Butch\OneDrive - Stony Brook University\ICDCS_2025\qft_circuits\qft_circuit({num_qubit}qubits).txt"
+            else:
+                file_path=f"C:/Users/Butch/Desktop/OneDrive - Stony Brook University/ICDCS_2025/random_circuits_new/{num_qubit}qubits_{num_qubit}layers.txt"
 
             ave_cost = 0
             ave_max_QPU = 0
@@ -672,16 +683,33 @@ def experiment_qft_constant_limit(L,run_id,num_qpu,limit_qpu,seed,SA=False,repea
             start_time = time.time()
 
             for k in range(1):
-                circuit = gate_cover_randominit.Circuit(file_path)
-                results=gate_cover_randominit.gate_cover(circuit.layers,L,lookahead_gates=1e9)
-                anastz=results["mapping_by_layer"]
-                total_epr = sum(op.get("n_epr", 0) for op in results["D"])
-                print(f"Total EPR pairs used in gate cover: {total_epr}")
-                cost, remote_cost_list, max_QPU = optimize_under(
-                    file_path, num_qpu, limit_qpu, epochs,
-                    anastz=anastz, anastz_mode="gatecover", print_nodes=False
-                )
+                if anastz is not None:
+                    circuit = gate_cover_randominit.Circuit(file_path)
+                    results=gate_cover_randominit.gate_cover(circuit.layers,L,lookahead_gates=1e9)
+                    anastz=results["mapping_by_layer"]
+                    total_epr = sum(op.get("n_epr", 0) for op in results["D"])
+                    print(f"Total EPR pairs used in gate cover: {total_epr}")
+                if print_nodes:
+                    cost, remote_cost_list, max_QPU, best_mappings = optimize_under(
+                        file_path, num_qpu, limit_qpu, epochs,
+                        anastz=anastz, anastz_mode=anastz_mode, print_nodes=print_nodes
+                    )
+                else:
+                    cost, remote_cost_list, max_QPU = optimize_under(
+                        file_path, num_qpu, limit_qpu, epochs,
+                        anastz=anastz, anastz_mode=anastz_mode, print_nodes=print_nodes
+                    )
                 print(f"Cost after Labubu: {cost}")
+                if plusGC:
+                    assert print_nodes, "to use plusGC, print_nodes must be True to get the best_mappings from optimize_under"
+                    results = gate_cover_randominit.gate_cover(circuit.layers, L, lookahead_gates=1e9, initial_mapping=best_mappings)
+                    cost = sum(op.get("n_epr", 0) for op in results["D"])
+                    remote_cost_list = sum(
+                        op.get("n_epr", 0)
+                        for op in results["D"]
+                        if op.get("op") == "TELEGATE"
+                    )
+                    print(f"Cost after plusGC: {cost}")
                 ave_cost += cost
                 ave_max_QPU += max_QPU
                 ave_remote_cost += remote_cost_list
@@ -751,11 +779,12 @@ for n in tqdm([25,15,5]):
     mean=n
     std_dev = 0
     num_qpu=300
-    anastz="gatecover"
+    # anastz="gatecover"
+    anastz=None
     qpu_limit=[int(round(random.gauss(mean,std_dev))) for _ in range(num_qpu)]
     sorted_qpu_limit=sorted(qpu_limit,reverse=True)
-    print(sorted_qpu_limit)
-    experiment_qft_constant_limit(n,run_id=4,num_qpu=num_qpu,limit_qpu=sorted_qpu_limit,seed=1,repeat_times=1, anastz=anastz)
+    # print(sorted_qpu_limit)
+    experiment_qft_constant_limit(n,run_id=4,num_qpu=num_qpu,limit_qpu=sorted_qpu_limit,seed=1,repeat_times=1, anastz=anastz,anastz_mode=None, print_nodes=True, plusGC=True)
 
 #count the number of CX gates in the FT circuit
 # for circuit_size in range(30,101,10):
